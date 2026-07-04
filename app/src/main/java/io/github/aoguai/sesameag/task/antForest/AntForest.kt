@@ -222,6 +222,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
     private var showBagList: BooleanModelField? = null
 
     private var vitalityExchangeList: SelectAndCountModelField? = null
+    private var wateringEnabled: BooleanModelField? = null
+    private var waterFriendEnergyFirst: BooleanModelField? = null
+    @Volatile
+    private var preCollectWateringExecutedThisRound: Boolean = false
     private var returnWater33: IntegerModelField? = null
     private var returnWater18: IntegerModelField? = null
     private var returnWater10: IntegerModelField? = null
@@ -387,6 +391,24 @@ class AntForest : ModelTask(), EnergyCollectCallback {
 
     internal fun isTakeLookEnergyEnabled(): Boolean {
         return isCollectEnergyEnabled() && takeLookEnergy?.value != false
+    }
+
+    private fun isForestWateringEnabled(): Boolean {
+        return wateringEnabled?.value != false
+    }
+
+    internal fun shouldRunWaterFriendsBeforeCollect(): Boolean {
+        return isForestWateringEnabled() &&
+            waterFriendEnergyFirst?.value == true &&
+            !preCollectWateringExecutedThisRound
+    }
+
+    internal fun markWaterFriendsBeforeCollectExecuted() {
+        preCollectWateringExecutedThisRound = true
+    }
+
+    internal fun hasWaterFriendsBeforeCollectExecuted(): Boolean {
+        return preCollectWateringExecutedThisRound
     }
 
     private fun hasRebornProtectWorkEnabled(): Boolean {
@@ -639,6 +661,22 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                 false
             ).withDesc("背包没有隐身卡时，允许按“活力值 | 兑换列表”中已勾选且名称命中的项自动补货。需同时开启“活力值 | 开启兑换”。").also {
                 stealthCardConstant = it
+            })
+        modelFields.addField(
+            BooleanModelField(
+                "wateringEnabled",
+                "浇水 | 开启",
+                true
+            ).withDesc("统一控制普通浇水、随机浇水任务、回浇和浇水金球/保护回赠收取；关闭后不影响复活金球与任务领奖。").also {
+                wateringEnabled = it
+            })
+        modelFields.addField(
+            BooleanModelField(
+                "waterFriendEnergyFirst",
+                "浇水 | 每轮收能量前先执行",
+                false
+            ).withDesc("开启后在完整森林流程中先执行好友浇水，再收自己/好友能量；仅影响正常流程，不影响“只收能量”链路。").also {
+                waterFriendEnergyFirst = it
             })
         modelFields.addField(
             IntegerModelField(
@@ -1011,6 +1049,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             GreenLife.resetForestMarketRound()
             if (showBagList?.value == true) showBag()
             initRebornWeeklyState()
+            preCollectWateringExecutedThisRound = false
             // 加载“今日统计”（按账号维度持久化），用于跨重启/多次运行累计
             selfId?.takeIf { it.isNotBlank() }?.let { uid ->
                 Statistics.load(uid)
@@ -1092,6 +1131,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
         handledProtectUsers.clear()
         roundPropCheckState = null
         lastUsePropCheckTime = 0L
+        preCollectWateringExecutedThisRound = false
         forestGameCenterRecentAppRecords.clear()
         GreenLife.resetForestMarketRound()
     }
@@ -1212,13 +1252,34 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      * @param wateringBubbles 包含不同类型金球的对象数组
      */
     private fun collectWateringBubbles(wateringBubbles: JSONArray) {
+        val forestWateringEnabled = isForestWateringEnabled()
+        var wateringBubbleSkipLogged = false
+        var returnEnergySkipLogged = false
         for (i in 0..<wateringBubbles.length()) {
             try {
                 val wateringBubble = wateringBubbles.getJSONObject(i)
                 when (val bizType = wateringBubble.getString("bizType")) {
-                    "jiaoshui" -> collectWater(wateringBubble)
+                    "jiaoshui" -> {
+                        if (!forestWateringEnabled) {
+                            if (!wateringBubbleSkipLogged) {
+                                Log.forest("浇水总开关关闭，跳过浇水金球收取")
+                                wateringBubbleSkipLogged = true
+                            }
+                            continue
+                        }
+                        collectWater(wateringBubble)
+                    }
                     "fuhuo" -> collectRebornEnergy()
-                    "baohuhuizeng" -> collectReturnEnergy(wateringBubble)
+                    "baohuhuizeng" -> {
+                        if (!forestWateringEnabled) {
+                            if (!returnEnergySkipLogged) {
+                                Log.forest("浇水总开关关闭，跳过保护回赠收取")
+                                returnEnergySkipLogged = true
+                            }
+                            continue
+                        }
+                        collectReturnEnergy(wateringBubble)
+                    }
                     else -> {
                         Log.forest("未知bizType: $bizType")
                         continue
@@ -1492,6 +1553,10 @@ class AntForest : ModelTask(), EnergyCollectCallback {
      */
     internal fun waterFriends() {
         try {
+            if (!isForestWateringEnabled()) {
+                Log.forest("waterFriends: 浇水总开关关闭，跳过好友浇水")
+                return
+            }
             val taskUid = UserMap.currentUid
             if (taskUid.isNullOrBlank()) {
                 Log.forest("waterFriends: 当前用户为空，跳过浇水")
@@ -3644,7 +3709,7 @@ class AntForest : ModelTask(), EnergyCollectCallback {
                         val bizNo = userHome.optString("bizNo")
                         if (bizNo.isNotEmpty()) {
                             val returnCount = getReturnCount(collected)
-                            if (returnCount > 0) {
+                            if (returnCount > 0 && isForestWateringEnabled()) {
                                 // ✅ 调用 returnFriendWater 增加通知好友开关
                                 val shouldNotifyFriend = notifyFriend?.value == true
                                 returnFriendWater(userId, bizNo, 1, returnCount, shouldNotifyFriend, selfId)
@@ -5518,6 +5583,15 @@ class AntForest : ModelTask(), EnergyCollectCallback {
             if (phase != TaskFlowPhase.REWARD_READY && roundCompletedTaskKeys.contains(taskKey)) {
                 if (duplicateSkipLogged.add("$taskKey|completed")) {
                     Log.debug(TAG, "森林任务[${item.title}] 本轮已推进，跳过重复完成探测")
+                }
+                return true
+            }
+            if (item.type == ONE_CLICK_WATERING_TASK_TYPE &&
+                phase == TaskFlowPhase.READY_TO_COMPLETE &&
+                !isForestWateringEnabled()
+            ) {
+                if (duplicateSkipLogged.add("$taskKey|watering-disabled")) {
+                    Log.forest("森林任务[${item.title}] 浇水总开关关闭，跳过自动随机浇水完成")
                 }
                 return true
             }
