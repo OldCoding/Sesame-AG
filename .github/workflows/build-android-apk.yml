@@ -2,8 +2,11 @@ name: Sesame-AG 全自动构建系统（最终稳定版）
 run-name: ${{ github.actor }} 触发的构建 | ${{ github.event_name }}
 
 on:
-  watch:
-    types: [started]
+  push:
+    branches: [ main, master, dev ]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *' # 每天北京时间早上8点自动检测更新
 
 env:
   CI: "true"
@@ -26,7 +29,7 @@ jobs:
   # 任务1：同步原仓库代码，检测是否有更新
   sync-upstream:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'watch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     outputs:
       has_update: ${{ steps.check_update.outputs.has_update }}
       change_log: ${{ steps.check_update.outputs.change_log }}
@@ -59,9 +62,12 @@ jobs:
           BEFORE_SHA=$(git rev-parse HEAD)
           git merge upstream/dev --no-edit -X theirs
           AFTER_SHA=$(git rev-parse HEAD)
-          SHORT_AFTER=$(git rev-parse --short "$AFTER_SHA")
 
           if [ "$BEFORE_SHA" != "$AFTER_SHA" ]; then
+            # 修改提交信息，加上 [skip ci]，避免触发二次构建
+            git commit --amend -m "Merge upstream/dev [skip ci]"
+            AFTER_SHA=$(git rev-parse HEAD)
+            
             echo "has_update=true" >> "$GITHUB_OUTPUT"
 
             CHANGE_LOG=$(git log --oneline "${BEFORE_SHA}..${AFTER_SHA}")
@@ -86,7 +92,7 @@ jobs:
 
       - name: 推送更新到本地仓库
         if: steps.check_update.outputs.has_update == 'true'
-        run: git push origin dev -o ci.skip
+        run: git push origin dev
 
   # 任务2：构建APK、签名、发布Release、清理旧版本
   build-and-sign:
@@ -108,7 +114,6 @@ jobs:
       always() &&
       (github.event_name == 'workflow_dispatch' ||
        github.event_name == 'push' ||
-       github.event_name == 'watch' ||
        needs.sync-upstream.outputs.has_update == 'true')
     steps:
       - name: 设置时区为上海
@@ -118,7 +123,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.GH_PAT }}
           ref: dev
 
       - name: 校验工具链版本一致性
