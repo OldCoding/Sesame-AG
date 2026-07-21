@@ -16,20 +16,17 @@ import java.util.UUID
 object AntStallRpcCall {
 
     /** 接口版本号 */
-    private const val VERSION = "0.1.2606011409.44"
+    private const val VERSION = "0.1.2607061424.40"
     private const val BASE_SOURCE = "ch_appcenter__chsub_9patch"
     private const val IEP_SOURCE = "AST"
     private const val SHARE_SOURCE = "ANTSTALL"
-    private const val RANK_SOURCE = "ANTFARM"
     private const val XLIGHT_AD_COMPONENT_TYPE = "FEEDS"
-    private const val XLIGHT_AD_COMPONENT_VERSION = "4.30.62"
+    private const val XLIGHT_VERSION = "4.31.4"
     private const val XLIGHT_ENABLE_FUSION = true
     private const val XLIGHT_NETWORK_TYPE = "WWAN"
     private const val XLIGHT_PAGE_NO = 1
     private const val XLIGHT_UNION_APP_ID = "2060090000304921"
-    private const val XLIGHT_RUNTIME_SDK_VERSION = "4.30.62"
     private const val XLIGHT_SDK_TYPE = "h5"
-    private const val XLIGHT_SDK_VERSION = "4.30.62"
     private const val METHOD_TASK_LIST = "com.alipay.antstall.task.list"
     private const val METHOD_SIGN_TODAY = "com.alipay.antstall.sign.today"
     private const val METHOD_FINISH_TASK = "com.alipay.antiep.finishTask"
@@ -145,15 +142,15 @@ object AntStallRpcCall {
     }
 
     /**
-     * @brief 捐赠排名金币
+     * @brief 查询新村捐赠排行榜
+     * @param startNum 服务端分页游标
      * @return 响应字符串
      */
-    fun rankCoinDonate(): String {
-        return RequestManager.requestString(
-            "com.alipay.antstall.rank.coin.donate",
-            "[{\"source\":\"$RANK_SOURCE\",\"systemType\":\"android\",\"version\":\"$VERSION\"}]"
+    fun rankDonateCount(startNum: Int): String =
+        RequestManager.requestString(
+            "com.alipay.antstall.rank.donate.count",
+            "[{\"source\":\"$BASE_SOURCE\",\"startNum\":$startNum,\"systemType\":\"android\",\"version\":\"$VERSION\"}]",
         )
-    }
 
     /**
      * @brief 进入好友的小铺首页
@@ -255,7 +252,7 @@ object AntStallRpcCall {
                         "sdkPageInfo",
                         JSONObject().apply {
                             put("adComponentType", XLIGHT_AD_COMPONENT_TYPE)
-                            put("adComponentVersion", XLIGHT_AD_COMPONENT_VERSION)
+                            put("adComponentVersion", XLIGHT_VERSION)
                             put("enableFusion", XLIGHT_ENABLE_FUSION)
                             put("networkType", if (networkType.isBlank()) XLIGHT_NETWORK_TYPE else networkType)
                             put("pageFrom", pageFrom)
@@ -267,9 +264,9 @@ object AntStallRpcCall {
                             put("session", session)
                             put("unionAppId", XLIGHT_UNION_APP_ID)
                             put("usePlayLink", "true")
-                            put("xlightRuntimeSDKversion", XLIGHT_RUNTIME_SDK_VERSION)
+                            put("xlightRuntimeSDKversion", XLIGHT_VERSION)
                             put("xlightSDKType", XLIGHT_SDK_TYPE)
-                            put("xlightSDKVersion", XLIGHT_SDK_VERSION)
+                            put("xlightSDKVersion", XLIGHT_VERSION)
                         }
                     )
                 }
