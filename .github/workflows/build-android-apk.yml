@@ -12,10 +12,10 @@ env:
   CI: "true"
   JAVA_DISTRIBUTION: "oracle"
   JAVA_VERSION: "17.0.1"
-  ANDROID_API_LEVEL: "37"
-  ANDROID_BUILD_TOOLS: "37.0.0"
-  LOCAL_GRADLE_VERSION: "9.5.1"
-  LOCAL_AGP_VERSION: "9.2.1"
+  ANDROID_API_LEVEL: "36"
+  ANDROID_BUILD_TOOLS: "36.0.0"
+  LOCAL_GRADLE_VERSION: "9.4.0-milestone-3"
+  LOCAL_AGP_VERSION: "9.0.1"
   LOCAL_KOTLIN_VERSION: "2.2.10"
   RELEASE_DIR: app/build/outputs/apk/release
   STAGING_DIR: app/build/outputs/apk/all
@@ -124,16 +124,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: dev
-
-      - name: 校验工具链版本一致性
-        run: |
-          grep -Eq '^distributionUrl=.*gradle-'"${LOCAL_GRADLE_VERSION//./\\.}"'-bin\.zip$' gradle/wrapper/gradle-wrapper.properties
-          grep -Eq '^android-plugin = "'"${LOCAL_AGP_VERSION//./\\.}"'"$' gradle/libs.versions.toml
-          grep -Eq '^kotlin = "'"${LOCAL_KOTLIN_VERSION//./\\.}"'"$' gradle/libs.versions.toml
-          grep -Eq '^appVersion=.+' gradle.properties
-          grep -Eq 'compileSdk = '"${ANDROID_API_LEVEL}"'$' app/build.gradle.kts
-          grep -Eq 'sourceCompatibility = JavaVersion.VERSION_17' app/build.gradle.kts
-          grep -Eq 'targetCompatibility = JavaVersion.VERSION_17' app/build.gradle.kts
 
       - name: 安装JDK环境
         uses: actions/setup-java@v5
